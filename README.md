@@ -3,7 +3,7 @@
 Project computer vision: **khoảng cách giữa ngón cái và ngón trỏ điều khiển hiệu ứng trên tất cả khuôn mặt** trong camera.
 
 - **Tay phải → PIXEL:** chụm 2 ngón = mặt rõ nét (0%), mở xa = mặt vỡ pixel (100%)
-- **Tay trái → SWIRL:** chụm 2 ngón = không xoắn (0%), mở xa = mặt xoắn như xoáy nước (100%). Vòng xoáy **tự động quay**, SWIRL càng cao quay càng nhanh
+- **Tay trái → SWIRL:** chụm 2 ngón = không xoắn (0%), mở xa = mặt xoắn như xoáy nước (100%)
 - Hiệu ứng PIXEL nằm **đè lên** SWIRL, các ô pixel có **noise** nhấp nháy màu
 - Bỏ tay ra khỏi khung hình → mức của tay đó **được giữ nguyên** (trạng thái `LOCKED`)
 - Camera mặc định 640x480, cửa sổ hiển thị rộng 640 px và luôn giữ đúng tỉ lệ ảnh
@@ -50,7 +50,7 @@ python main.py --source video.mp4   # test bằng file video
 | Tay trái mở rộng 2 ngón | Mặt xoắn dần, tối đa `Swirl max deg` độ ở tâm mặt |
 | Bỏ tay ra khỏi khung hình | Mức của tay đó giữ nguyên (`LOCKED` màu cam) |
 
-Góc dưới bên trái có 2 thanh: `PIXEL` và `SWIRL`. Hai tay dùng được cùng lúc. Mặt được **xoắn trước, rồi pixel hoá đè lên trên**. Khi SWIRL đang LOCKED (bỏ tay trái ra), vòng xoáy vẫn tiếp tục tự quay.
+Góc dưới bên trái có 2 thanh: `PIXEL` và `SWIRL`. Hai tay dùng được cùng lúc. Mặt được **xoắn trước, rồi pixel hoá đè lên trên**.
 
 Khoảng cách được **chia cho kích thước lòng bàn tay** (cổ tay → khớp ngón giữa), nên đứng gần hay xa camera thì cử chỉ vẫn cho cùng kết quả. Mức pixel được làm mượt (smoothing) để không bị giật.
 
@@ -85,7 +85,6 @@ Nhấn `X` để mở một cửa sổ riêng có các thanh trượt. Nhấn `X
 | `Blocks at 0%` / `Blocks at 100%` | Số ô pixel ngang mặt ở mức thấp / cao nhất (ít ô = vỡ hơn) |
 | `Pixel noise` | Độ nhiễu màu của các ô pixel (0 = tắt, 100 = rất nhiễu). Noise cũng tăng theo mức PIXEL |
 | `Swirl max deg` | Góc xoắn ở tâm mặt khi SWIRL = 100% (0–1080 độ) |
-| `Swirl spin` | Tốc độ tự quay của vòng xoáy (độ/giây, ở SWIRL = 100%). 0 = không quay |
 | `Window width` | Chiều rộng cửa sổ camera (px). Chiều cao tự tính theo tỉ lệ ảnh |
 
 - Các thông số ảnh và hiệu ứng áp dụng **ngay lập tức**.
@@ -149,7 +148,6 @@ Nếu vẫn thấp, thử theo thứ tự:
 | `face_padding` | 0.25 | Nới rộng vùng mặt thêm 25% |
 | `pixel_noise` | 35 | Độ nhiễu màu của ô pixel (0–100) |
 | `max_swirl_deg` | 540 | Góc xoắn tối đa ở tâm mặt |
-| `swirl_spin_speed` | 180 | Tốc độ tự quay của vòng xoáy (độ/giây ở 100%) |
 | `swirl_radius` | 1.0 | Kích thước vòng xoắn so với vùng mặt (lớn hơn = xoắn lan rộng hơn) |
 | `face_hold_sec` | 0.35 | Giữ vùng mặt cũ nếu mất nhận diện tạm thời (tránh lộ mặt 1 frame) |
 | `detect_width` | 640 | Ảnh được thu nhỏ về chiều rộng này trước khi đưa vào AI (nhỏ = nhanh) |
@@ -177,7 +175,7 @@ Luồng xử lý mỗi frame:
 ```
 Camera (thread) → lật gương → thu nhỏ → MediaPipe (tay + mặt)
    → tay phải → mức PIXEL, tay trái → mức SWIRL (làm mượt / LOCKED)
-   → xoắn (tự quay) rồi pixel hoá + noise đè lên từng mặt → thu nhỏ về display_width → vẽ HUD → hiển thị
+   → xoắn rồi pixel hoá + noise đè lên từng mặt → thu nhỏ về display_width → vẽ HUD → hiển thị
 ```
 
 ## 7. Lỗi thường gặp

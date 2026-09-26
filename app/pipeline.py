@@ -31,7 +31,6 @@ class FacePixelPipeline:
         self.hands = []
         self.pixel_hand = None
         self.swirl_hand = None
-        self.swirl_phase = 0.0            # current auto-rotation angle (degrees)
 
     def process(self, frame, dt: float):
         """Detect, update both levels and apply the effects. HUD bars are drawn later
@@ -57,17 +56,12 @@ class FacePixelPipeline:
             ctrl.update(hand, dt)
         pixel, swirl = self.pixel_ctrl.level, self.swirl_ctrl.level
 
-        # The whirlpool turns by itself; it spins faster the higher the SWIRL level.
-        self.swirl_phase = (self.swirl_phase + s.swirl_spin_speed * swirl * dt) % 360.0
-        swirl_strength = min(1.0, swirl / 0.15)       # fade the effect in over the first 15%
-
         # 3) Effects on every face: swirl first, then pixelate on top of it
         for box in self.faces:
             x1, y1, x2, y2 = expand_box(box, s.face_padding, w, h)
             center = ((x1 + x2) / 2, (y1 + y2) / 2)
             radius = max(x2 - x1, y2 - y1) / 2 * s.swirl_radius
-            swirl_region(frame, center, radius, swirl * s.max_swirl_deg,
-                         spin_deg=self.swirl_phase, strength=swirl_strength)
+            swirl_region(frame, center, radius, swirl * s.max_swirl_deg)
             pixelate_region(frame, (x1, y1, x2, y2), pixel, s.max_blocks, s.min_blocks,
                             noise=s.pixel_noise)
 

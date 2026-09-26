@@ -118,7 +118,6 @@ class SettingsWindow:
             ("Blocks at 100%", 2, 32, s.min_blocks),
             ("Pixel noise", 0, 100, s.pixel_noise),
             ("Swirl max deg", 0, 1080, s.max_swirl_deg),
-            ("Swirl spin", 0, 720, s.swirl_spin_speed),
             ("Window width", 320, 1920, s.display_width),
         ]
         return sliders
@@ -203,8 +202,6 @@ class SettingsWindow:
             s.max_swirl_deg = pos
         elif label == "Pixel noise":
             s.pixel_noise = pos
-        elif label == "Swirl spin":
-            s.swirl_spin_speed = pos
         elif label == "Window width":
             s.display_width = pos
         return None
@@ -278,7 +275,7 @@ class SettingsWindow:
         line(f"Pinch: 0% at ratio {s.pinch_min_ratio:.2f}, 100% at {s.pinch_max_ratio:.2f}")
         line(f"Smoothing {s.smoothing_tau * 1000:.0f} ms   Blocks {s.max_blocks} -> {s.min_blocks}"
              f"   Noise {s.pixel_noise}")
-        line(f"Swirl max {s.max_swirl_deg} deg   Swirl spin {s.swirl_spin_speed} deg/s")
+        line(f"Swirl max {s.max_swirl_deg} deg")
         line(f"Window width {s.display_width} px (height keeps the image ratio)")
         y += 4
         line("X: close   P: driver dialog   Saved to settings.json on exit", GRAY, 0.45)

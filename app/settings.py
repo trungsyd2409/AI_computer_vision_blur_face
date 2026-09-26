@@ -36,7 +36,6 @@ class Settings:
     pixel_noise: int = 35          # 0..100 random colour flicker on the blocks (grows with PIXEL %)
     face_padding: float = 0.25     # enlarge face box by 25% on each side
     max_swirl_deg: int = 540       # twist angle at the face centre at 100% swirl
-    swirl_spin_speed: int = 180    # auto-rotation speed in degrees/second at 100% swirl
     swirl_radius: float = 1.0      # swirl circle diameter relative to the padded face box (1.0 = same size)
     face_hold_sec: float = 0.35    # keep last face box this long if detection drops
 
