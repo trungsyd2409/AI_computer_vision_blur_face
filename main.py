@@ -1,5 +1,5 @@
 """Pinch-to-pixelate: the farther your thumb and index finger are apart,
-the more pixelated every face on screen becomes.
+the more every face on screen is pixelated (right hand) or swirled (left hand).
 
 Run:  python main.py                  (default webcam)
       python main.py --camera 1       (another webcam)
@@ -15,11 +15,22 @@ from app import hud
 from app.camera import FpsMeter, ThreadedCamera
 from app.detectors import Detectors
 from app.pipeline import FacePixelPipeline
+from app.settings_window import SettingsWindow
 from app.settings import load_settings, save_settings
 
 ROOT = Path(__file__).resolve().parent
 WINDOW = "Pinch to Pixelate"
 FPS_PRESETS = {ord("1"): 15, ord("2"): 24, ord("3"): 30, ord("4"): 60}
+
+
+def fit_width(img, width: int):
+    """Resize to `width` pixels wide, keeping the image's aspect ratio."""
+    h, w = img.shape[:2]
+    if width <= 0 or width == w:
+        return img
+    height = round(h * width / w)
+    interp = cv2.INTER_AREA if width < w else cv2.INTER_LINEAR
+    return cv2.resize(img, (width, height), interpolation=interp)
 
 
 def parse_args():
@@ -42,9 +53,11 @@ def main():
     detectors = Detectors(ROOT / "models", settings.detect_width)
     pipeline = FacePixelPipeline(settings, detectors)
 
+    camera = ThreadedCamera(source, settings.backend, settings.width, settings.height,
+                            settings.target_fps, settings.use_mjpg)
+    camera.props = settings.camera_props       # same dict: slider changes are saved on exit
     try:
-        camera = ThreadedCamera(source, settings.backend, settings.width, settings.height,
-                                settings.target_fps, settings.use_mjpg).start()
+        camera.start()
     except RuntimeError as e:
         print(f"[error] {e}")
         print("Hints: close other apps using the camera (Zoom, Teams, Camera app), "
@@ -52,9 +65,11 @@ def main():
         detectors.close()
         return
 
-    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
-    w, h = camera.actual_size
-    cv2.resizeWindow(WINDOW, w, h)
+    # AUTOSIZE: the window is exactly the size of the image we show, so the
+    # aspect ratio is always correct. Change the size with display_width.
+    cv2.namedWindow(WINDOW, cv2.WINDOW_AUTOSIZE)
+    cv2.moveWindow(WINDOW, 40, 40)
+    settings_win = SettingsWindow(settings, camera, is_webcam)
 
     app_meter = FpsMeter()
     toast_text, toast_until = "", 0.0
@@ -79,6 +94,7 @@ def main():
             toast(f"Camera refused {fps} FPS, back to {old}")
         else:
             toast("Camera re-open failed! Press Q and restart.")
+        settings_win.sync_fps(settings.target_fps)
 
     try:
         while True:
@@ -96,11 +112,16 @@ def main():
             app_meter.tick(now)
 
             out = pipeline.process(frame, dt)
+            out = fit_width(out, settings.display_width)   # HUD is drawn at window size
+            pipeline.draw_bars(out)
 
             cam_info = f"{camera.backend_name} {camera.actual_fourcc} " \
                        f"{camera.actual_size[0]}x{camera.actual_size[1]}"
             hud.draw_fps(out, app_meter.fps, camera.fps, settings.target_fps, cam_info)
             hud.draw_help(out, settings.show_help)
+            msg = settings_win.update()
+            if msg:
+                toast(msg)
             if now < toast_until:
                 hud.draw_toast(out, toast_text)
             cv2.imshow(WINDOW, out)
@@ -108,15 +129,14 @@ def main():
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
+            elif key == ord("x"):
+                toast(settings_win.toggle())
             elif key in FPS_PRESETS:
                 set_target_fps(FPS_PRESETS[key])
-                frame_id = 0
             elif key in (ord("+"), ord("=")):
                 set_target_fps(settings.target_fps + 5)
-                frame_id = 0
             elif key in (ord("-"), ord("_")):
                 set_target_fps(settings.target_fps - 5)
-                frame_id = 0
             elif key == ord("m"):
                 settings.mirror = not settings.mirror
                 toast(f"Mirror {'ON' if settings.mirror else 'OFF'}")
@@ -126,8 +146,8 @@ def main():
             elif key == ord("h"):
                 settings.show_help = not settings.show_help
             elif key == ord("r"):
-                pipeline.controller.reset()
-                toast("Pixel level reset to 0%")
+                pipeline.reset()
+                toast("Pixel + swirl reset to 0%")
             elif key == ord("p"):
                 if not camera.open_driver_settings():
                     toast("Driver settings need the DSHOW backend (Windows)")
@@ -136,7 +156,8 @@ def main():
             if cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:
                 break
     finally:
-        settings.last_pixel_level = round(pipeline.level, 3)
+        settings.last_pixel_level = round(pipeline.pixel_ctrl.level, 3)
+        settings.last_swirl_level = round(pipeline.swirl_ctrl.level, 3)
         save_settings(settings, args.settings)
         camera.stop()
         detectors.close()

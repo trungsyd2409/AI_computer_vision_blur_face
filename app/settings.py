@@ -1,6 +1,6 @@
 """Load / save user settings from a JSON file next to main.py."""
 import json
-from dataclasses import dataclass, asdict, fields
+from dataclasses import dataclass, asdict, field, fields
 from pathlib import Path
 
 
@@ -9,18 +9,23 @@ class Settings:
     # --- Camera ---
     camera_index: int = 0
     backend: str = "auto"          # "auto" | "dshow" | "msmf" | "any"
-    width: int = 1280
-    height: int = 720
+    width: int = 640
+    height: int = 480
     target_fps: int = 30
     use_mjpg: bool = True          # MJPG is the main trick to get 30 FPS on Windows webcams
+    # Image settings changed in the Settings window (X key). Only values you
+    # touched are stored; the rest stay at the driver's defaults.
+    camera_props: dict = field(default_factory=dict)
 
     # --- View ---
     mirror: bool = True
+    display_width: int = 640       # window width in pixels; height follows the image ratio
     show_overlays: bool = True     # skeleton + thumb-index line
     show_help: bool = False
 
     # --- Gesture -> pixel level ---
-    control_hand: str = "Right"    # "Right" | "Left" | "Any"
+    control_hand: str = "Right"    # hand for PIXEL: "Right" | "Left" | "Any"
+    swirl_hand: str = "Left"       # hand for SWIRL: "Right" | "Left" | "Any"
     pinch_min_ratio: float = 0.25  # pinch ratio at/below this -> 0% pixelation
     pinch_max_ratio: float = 1.50  # pinch ratio at/above this -> 100% pixelation
     smoothing_tau: float = 0.08    # seconds; bigger = smoother but slower response
@@ -28,7 +33,11 @@ class Settings:
     # --- Pixelation look ---
     max_blocks: int = 48           # blocks across the face at ~0% (almost sharp)
     min_blocks: int = 4            # blocks across the face at 100% (very blocky)
+    pixel_noise: int = 35          # 0..100 random colour flicker on the blocks (grows with PIXEL %)
     face_padding: float = 0.25     # enlarge face box by 25% on each side
+    max_swirl_deg: int = 540       # twist angle at the face centre at 100% swirl
+    swirl_spin_speed: int = 180    # auto-rotation speed in degrees/second at 100% swirl
+    swirl_radius: float = 1.0      # swirl circle diameter relative to the padded face box (1.0 = same size)
     face_hold_sec: float = 0.35    # keep last face box this long if detection drops
 
     # --- Detection speed ---
@@ -36,6 +45,7 @@ class Settings:
 
     # --- State remembered between runs ---
     last_pixel_level: float = 0.0
+    last_swirl_level: float = 0.0
 
 
 def load_settings(path: Path) -> Settings:

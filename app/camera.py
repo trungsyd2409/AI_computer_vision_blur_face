@@ -25,6 +25,21 @@ BACKENDS = {
     "any": cv2.CAP_ANY,
 }
 
+# Image properties the Settings window can change (name -> OpenCV property id).
+CAMERA_PROPS = {
+    "brightness": cv2.CAP_PROP_BRIGHTNESS,
+    "contrast": cv2.CAP_PROP_CONTRAST,
+    "saturation": cv2.CAP_PROP_SATURATION,
+    "gain": cv2.CAP_PROP_GAIN,
+    "auto_exposure": cv2.CAP_PROP_AUTO_EXPOSURE,
+    "exposure": cv2.CAP_PROP_EXPOSURE,
+}
+
+# CAP_PROP_AUTO_EXPOSURE uses different numbers per backend: (auto_on, auto_off).
+# DirectShow / Media Foundation (Windows): 1 = auto, 0 = manual.
+# V4L2 (Linux): 3 = auto (aperture priority), 1 = manual.
+AUTO_EXPOSURE_VALUES = (1, 0) if IS_WINDOWS else (3, 1)
+
 
 def fourcc_to_str(value: float) -> str:
     code = int(value)
@@ -69,7 +84,12 @@ class ThreadedCamera:
         self.actual_size = (0, 0)
         self.reported_fps = 0.0
 
-        self._lock = threading.Condition()
+        # Image settings set by the user; re-applied every time the camera (re)opens.
+        # Keys are names from CAMERA_PROPS. auto_exposure is stored as 1 (on) / 0 (off).
+        self.props: dict = {}
+
+        self._lock = threading.Condition()       # protects _frame / _frame_id
+        self._cap_lock = threading.Lock()        # protects cap.read() / cap.set()
         self._frame = None
         self._frame_id = 0
         self._running = False
@@ -96,6 +116,19 @@ class ThreadedCamera:
         cap.set(cv2.CAP_PROP_FPS, self.target_fps)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)   # keep latency low (ignored by some drivers)
 
+    def _apply_props(self, cap):
+        """Re-apply the user's image settings (brightness, exposure, ...)."""
+        props = dict(self.props)
+        auto = props.pop("auto_exposure", None)
+        exposure = props.pop("exposure", None)
+        for name, value in props.items():
+            cap.set(CAMERA_PROPS[name], value)
+        if auto is not None:
+            cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, AUTO_EXPOSURE_VALUES[0 if auto else 1])
+        # Setting an exposure value switches most drivers to manual, so only do it when auto is off.
+        if exposure is not None and not auto:
+            cap.set(cv2.CAP_PROP_EXPOSURE, exposure)
+
     def open(self) -> bool:
         for name, api in self._backend_order():
             cap = cv2.VideoCapture(self.source, api)
@@ -104,6 +137,7 @@ class ThreadedCamera:
                 continue
             if not isinstance(self.source, str):
                 self._configure(cap)
+                self._apply_props(cap)
             ok, frame = cap.read()
             if not ok or frame is None:
                 cap.release()
@@ -114,7 +148,9 @@ class ThreadedCamera:
             self.actual_size = (frame.shape[1], frame.shape[0])
             self.reported_fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
             with self._lock:
-                self._frame, self._frame_id = frame, 1
+                # ids keep increasing across re-opens, so the main loop never gets confused
+                self._frame = frame
+                self._frame_id += 1
             print(f"[camera] {self.backend_name} {self.actual_size[0]}x{self.actual_size[1]} "
                   f"format={self.actual_fourcc} driver-fps={self.reported_fps:.1f} "
                   f"(target {self.target_fps})")
@@ -136,10 +172,12 @@ class ThreadedCamera:
         file_dt = 1.0 / (self.reported_fps or 30.0)
         next_t = time.perf_counter()
         while self._running:
-            ok, frame = self.cap.read()
+            with self._cap_lock:
+                ok, frame = self.cap.read()
             if not ok:
                 if is_file:            # loop video files for testing
-                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    with self._cap_lock:
+                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     continue
                 time.sleep(0.005)
                 continue
@@ -176,10 +214,13 @@ class ThreadedCamera:
             self.cap.release()
             self.cap = None
 
-    def reopen(self, fps: int | None = None) -> bool:
-        """Re-open the camera with a new target FPS (drivers only apply FPS on open)."""
+    def reopen(self, fps: int | None = None, width: int | None = None,
+               height: int | None = None) -> bool:
+        """Re-open the camera with a new FPS / resolution (drivers only apply them on open)."""
         if fps is not None:
             self.target_fps = fps
+        if width is not None and height is not None:
+            self.width, self.height = width, height
         self.stop()
         try:
             self.start()
@@ -193,4 +234,28 @@ class ThreadedCamera:
         Useful to turn off 'Low light compensation' / auto exposure, which can cap FPS."""
         if self.cap is None or self.backend_name != "DSHOW":
             return False
-        return bool(self.cap.set(cv2.CAP_PROP_SETTINGS, 1))
+        with self._cap_lock:
+            return bool(self.cap.set(cv2.CAP_PROP_SETTINGS, 1))
+
+    # ------------------------------------------------------ image settings
+    def get_prop(self, name: str) -> float | None:
+        """Current value reported by the driver, or None if unavailable."""
+        if self.cap is None or isinstance(self.source, str):
+            return None
+        with self._cap_lock:
+            value = self.cap.get(CAMERA_PROPS[name])
+        return value
+
+    def set_prop(self, name: str, value: float) -> float | None:
+        """Change one image setting, remember it, and return the value read back."""
+        self.props[name] = value
+        if self.cap is None or isinstance(self.source, str):
+            return None
+        with self._cap_lock:
+            if name == "auto_exposure":
+                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, AUTO_EXPOSURE_VALUES[0 if value else 1])
+                if not value and "exposure" in self.props:
+                    self.cap.set(cv2.CAP_PROP_EXPOSURE, self.props["exposure"])
+            else:
+                self.cap.set(CAMERA_PROPS[name], value)
+            return self.cap.get(CAMERA_PROPS[name])

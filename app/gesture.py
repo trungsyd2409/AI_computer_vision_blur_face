@@ -1,4 +1,4 @@
-"""Turn the thumb-index distance into a smooth pixelation level (0.0 .. 1.0)."""
+"""Turn the thumb-index distance into a smooth effect level (0.0 .. 1.0)."""
 import math
 
 import numpy as np
@@ -27,7 +27,9 @@ class HandednessStabilizer:
             p_obs = hand.score if hand.label == "Right" else 1.0 - hand.score
             best = min(free, key=lambda t: np.linalg.norm(t["pos"] - wrist), default=None)
             if best is not None and np.linalg.norm(best["pos"] - wrist) < self.max_jump * frame_diag:
-                free.remove(best)
+                # Remove by identity: list.remove() would compare dicts with ==, which
+                # compares the numpy "pos" arrays and crashes when 2+ hands are tracked.
+                free = [t for t in free if t is not best]
                 p = (1 - self.alpha) * best["p_right"] + self.alpha * p_obs
             else:
                 p = p_obs                                   # a new hand
@@ -63,8 +65,9 @@ def pinch_ratio(hand: Hand) -> float:
     return float(pinch / palm) if palm > 1e-6 else 0.0
 
 
-class PixelLevelController:
-    """Keeps the current level. When no control hand is visible the level is locked."""
+class LevelController:
+    """Turns one hand's pinch into a 0..1 level (used for PIXEL and for SWIRL).
+    When its hand is not visible the level is locked at the last value."""
 
     def __init__(self, min_ratio: float, max_ratio: float, tau: float, start_level: float = 0.0):
         self.min_ratio = min_ratio
