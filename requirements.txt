@@ -1,0 +1,4 @@
+# MediaPipe also installs opencv-contrib-python, so do NOT add opencv-python here
+# (having both installed at the same time can break cv2).
+mediapipe>=0.10.14
+numpy
